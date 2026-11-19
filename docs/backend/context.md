@@ -43,6 +43,8 @@ Markdown；笔记仍单独提供。`page` / `region` 继续使用 PDF 版面坐�
 
 工具结果带 `citationUri`。实际用过的 URI 追加到同目录的 `usage.jsonl`，回合结束时放进 `agent:completed` 的 `sources`。侧边栏和 Quick Chat 把这些来源画成可点击的定位。
 
+`agentero-context` 完成 MCP 初始化后会在同一回合目录写入 `mcp.connected`。有 grant 的回合正常结束时，诊断日志记录握手为 `initialized` 或 `not observed`。前者只确认适配器连到了 worker，不代表模型调用了工具；后者表示回合结束前未观察到握手，适配器可能未转发 MCP，也可能连接失败或尚未建立。没有 grant 的回合不打印这条诊断。Pi 的兼容接法见[接入 Agent](../usage/agents.md#pi-的研究上下文工具)。
+
 ## 指纹和恢复
 
 指纹覆盖工具名单、允许的来源、预算，以及这次是挂了 MCP 还是只能用 prompt。引文改字不改变指纹。授权范围变了，或者这份会话以前没有指纹，Host 会丢掉 resume id，新开 ACP 会话，避免旧会话悄悄多读到新的来源。侧栏会把已经显示的先前对话交给这次新会话，已经在 prompt 里的那份不会再贴一次。被拒绝续上的旧 ACP 会话也不会从 warm pool 里接着用。

@@ -1058,8 +1058,23 @@ impl RunOnceContext {
         let sources = self
             .context_usage
             .as_deref()
-            .map(agentero_core::features::context::read_usage_uris)
-            .unwrap_or_default();
+            .map_or_else(Vec::new, |usage| {
+                // A successful ACP turn does not prove that the adapter connected
+                // to its session MCP servers. Check the worker's handshake marker,
+                // not the citation log: a connected tool need not be used on a turn.
+                let connected = crate::integration::context_mcp::connection_marker(usage).is_file();
+                let status = if connected {
+                    "initialized"
+                } else {
+                    "not observed"
+                };
+                log::info!(
+                    target: "agentero::agent",
+                    "session context MCP handshake {status} (agent={}, turn={})",
+                    self.agent_id, self.session_id,
+                );
+                agentero_core::features::context::read_usage_uris(usage)
+            });
         let payload = AgentResultPayload {
             session_id: self.session_id.clone(),
             message_id: self.message_id.clone(),

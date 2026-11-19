@@ -10,7 +10,7 @@ use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabiliti
 use rmcp::{tool, tool_handler, tool_router, ServerHandler, ServiceExt};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -240,6 +240,12 @@ pub fn try_run_context_mcp() -> Option<i32> {
     }
 }
 
+/// Evidence that the worker completed MCP initialization, distinct from tool use.
+/// `session_file` is either the grant or the usage log in the same turn directory.
+pub(crate) fn connection_marker(session_file: &Path) -> PathBuf {
+    session_file.with_file_name("mcp.connected")
+}
+
 fn serve(grant: PathBuf) -> Result<(), String> {
     let session = ContextSession::open(&grant).map_err(|error| error.to_string())?;
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -251,6 +257,16 @@ fn serve(grant: PathBuf) -> Result<(), String> {
             .serve(rmcp::transport::stdio())
             .await
             .map_err(|error| format!("context mcp handshake: {error}"))?;
+        if let Err(error) = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(connection_marker(&grant))
+            .await
+        {
+            if error.kind() != std::io::ErrorKind::AlreadyExists {
+                eprintln!("agentero-context: could not record MCP connection: {error}");
+            }
+        }
         server
             .waiting()
             .await

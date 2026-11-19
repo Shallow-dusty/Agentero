@@ -95,6 +95,22 @@ Skill 来源不受 Agentero 审计，安装第三方 Skill 等于引入外部指
 
 Pi 只有在信任 Vault 后才会加载项目内的 `.agents/skills` 和 `.pi/*`。未信任时 Pi 面板输入框上方会显示提示；点「信任此 Vault」会写入 `~/.pi/agent/trust.json`，下一条消息起生效。也可以先在 pi 自己的 TUI 里信任该目录：回到 Agentero 后提示会自动消失，下一轮会重新启动 pi 进程并加载 Skill。
 
+### Pi 的研究上下文工具
+
+内置 Pi 模板使用社区 `pi-acp`。`pi-acp@0.0.34` 能对话，但不会把 ACP 会话里的 MCP 服务转发给 Pi；信任 Vault 或开启设置里的全库 MCP 都不会补上这一步。
+
+需要 `context_read` 等工具时，可用支持转发的适配器**另建自定义 Agent**，不用替换内置 Pi。已验证的组合是 Pi 1.5.2 + 第三方 `@razorbackdb/pi-acp@0.0.36`（[源码](https://github.com/razorbackdb/pi-acp)）。将它装在独立目录：
+
+```sh
+npm install --prefix "$HOME/.local/agentero-pi-mcp" @razorbackdb/pi-acp@0.0.36
+```
+
+在设置 → Agent → 新增自定义 Agent，把 **命令**设为上述目录中 `node_modules/.bin/pi-acp` 的绝对路径（Windows 用 `node_modules\.bin\pi-acp.cmd`，安装时用 Windows 的目录作 `--prefix`），不填参数。如果桌面应用找不到 Pi，在这个 Agent 的环境变量里将 `PI_ACP_PI_COMMAND` 设为 Pi 可执行文件的绝对路径。
+
+在本地 Vault 的对话中用 `@` 加入一份文件，然后明确要求用 **codemode 查找并调用 agentero-context 的 context_read**。确认工具结果和回复中的来源链接，恢复同一会话后再试一轮。默认情况下 Pi 不会把这些 MCP 工具逐个放进模型的工具列表，不需要因此在 `mcp.json` 里另配同名服务。
+
+若能聊天但没有上下文工具，在应用诊断日志查找 `session context MCP handshake`：`not observed` 表示本轮结束前没观察到 MCP worker 的握手，先确认选中了自定义 Agent、适配器路径无误；`initialized` 表示 worker 已连接，再检查 Pi 的 codemode 是否开启，以及模型是否实际调用工具。远程会话和没有授权来源的回合不挂这个服务。
+
 ## 第一次对话
 
 1. 打开一篇论文（默认 PDF | NOTES 分屏）。
