@@ -182,7 +182,10 @@ fn terminal_entry(terminal_preference: &str) -> OpenWithApp {
         (name, icon)
     };
     #[cfg(not(target_os = "macos"))]
-    let (name, icon) = ("Terminal", None);
+    let (name, icon) = {
+        let _ = terminal_preference;
+        ("Terminal", None)
+    };
     OpenWithApp {
         id: TERMINAL_ID.to_string(),
         name: name.to_string(),
