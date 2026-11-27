@@ -429,6 +429,7 @@ async fn analyze_pdf(ctx: LayoutAnalyzeContext) -> Result<LayoutRemoteAnalyzePdf
         app,
         credentials,
         args,
+        ..
     } = ctx;
     let (pdf_bytes, file_name) =
         super::prepare_pdf_upload(&args.pdf_base64, args.file_name.as_deref())?;

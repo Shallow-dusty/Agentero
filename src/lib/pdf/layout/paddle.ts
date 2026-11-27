@@ -51,6 +51,7 @@ export async function invokeLayoutRemoteAnalyzePdf(args: {
 	fileName?: string;
 	apiKey?: string;
 	requestId?: string;
+	pageCount?: number;
 }): Promise<LayoutRemoteAnalyzePdfResult> {
 	// Wire boxes keep serde `null` on absent score/coordinate numbers and add
 	// `renderedPages`; the converters below treat null like the old payload.
@@ -61,6 +62,7 @@ export async function invokeLayoutRemoteAnalyzePdf(args: {
 			fileName: args.fileName ?? null,
 			apiKey: args.apiKey ?? null,
 			requestId: args.requestId ?? null,
+			pageCount: args.pageCount,
 		}),
 	)) as LayoutRemoteAnalyzePdfResult;
 }

@@ -127,11 +127,13 @@ pub async fn layout_remote_analyze_pdf(
             args.pdf_base64.len()
         ),
     );
+    let cancellation = run.cancellation.clone();
     let ctx = LayoutAnalyzeContext {
         // Progress events reach the WebView through the desktop HostHooks.
         app: crate::features::host_hooks::wrap(&app),
         credentials,
         args,
+        is_cancelled: Box::new(move || cancellation.is_cancelled()),
     };
     let result = tokio::select! {
         result = engine.analyze_pdf(ctx) => result,

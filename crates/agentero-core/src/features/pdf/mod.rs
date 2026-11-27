@@ -2,7 +2,7 @@
 
 /// Use the same bundled library discovery as the isolated parsing worker.
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
-fn open_library() -> Result<liteparse_pdfium::Library, crate::error::AppError> {
+pub(crate) fn open_library() -> Result<liteparse_pdfium::Library, crate::error::AppError> {
     use crate::error::AppError;
     super::paper::analyze::parse::ensure_pdfium_loaded()
         .map_err(|message| AppError::domain("pdfium_unavailable", message))?;

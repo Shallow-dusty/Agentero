@@ -29,6 +29,7 @@ regex = "1"
 roxmltree = "0.20"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 async-trait = "0.1.91"
+bytes = "1"
 # `error::ApiResult` and `features::translate` models derive `specta::Type`
 # for the IPC contract; specta is lightweight and pulls in no wry/tao/tauri.
 specta = { version = "2.0.0-rc.22", features = ["derive", "chrono"] }

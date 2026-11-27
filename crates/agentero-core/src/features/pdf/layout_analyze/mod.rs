@@ -262,7 +262,9 @@ pub async fn analyze_paper_layout(
             api_key: None,
             request_id: Some(request_id),
             provider: Some(provider_settings.provider.clone()),
+            page_count: Some(page_count),
         },
+        is_cancelled: Box::new(|| false),
     };
     let result = engine.analyze_pdf(context).await?;
     if result.pages.len() as u32 != page_count {

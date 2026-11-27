@@ -947,9 +947,8 @@ export function validateRemoteLayoutPageCount(
 }
 
 /**
- * Remote provider run: upload the whole PDF once as an async job; the Host
- * polls and streams progress events, then per-page boxes come back in one
- * result — no per-page rendering or requests on our side.
+ * The Host runs the remote jobs and streams progress. The viewer receives
+ * one result with per-page boxes, even when the Host processes several ranges.
  */
 function startRemoteLayoutAnalysis(
 	provider: RemoteLayoutProviderDescriptor,
@@ -1021,6 +1020,7 @@ function startRemoteLayoutAnalysis(
 				pdfBase64: arrayBufferToBase64(buffer),
 				fileName: pdfPath.split(/[/\\]/).pop() || "paper.pdf",
 				requestId,
+				pageCount: provider.id === "mineru" ? totalPages : undefined,
 			});
 			unlisten?.();
 			unlisten = null;

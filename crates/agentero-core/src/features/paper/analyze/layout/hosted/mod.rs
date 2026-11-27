@@ -87,6 +87,10 @@ pub struct LayoutRemoteAnalyzePdfArgs {
     /// Remote provider id (defaults to `paddle`).
     #[serde(default)]
     pub provider: Option<String>,
+    /// Viewer page count for platforms without local PDFium.
+    #[serde(default)]
+    #[specta(optional)]
+    pub page_count: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]

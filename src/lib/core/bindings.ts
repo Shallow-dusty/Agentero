@@ -4240,6 +4240,8 @@ export type LayoutRemoteAnalyzePdfArgs = {
 	requestId?: string | null,
 	/**  Remote provider id (defaults to `paddle`). */
 	provider?: string | null,
+	/**  Viewer page count for platforms without local PDFium. */
+	pageCount?: number | null,
 };
 
 export type LayoutRemoteAnalyzePdfResult = {

@@ -30,6 +30,7 @@ use std::collections::HashSet;
 use std::io::Read;
 use std::time::{Duration, Instant};
 
+mod chunked;
 mod extract;
 
 const MINERU_BASE_URL: &str = "https://mineru.net";
@@ -878,15 +879,26 @@ fn parse_result_zip(bytes: &[u8]) -> Result<LayoutRemoteAnalyzePdfResult, AppErr
             rendered_pages,
         });
     }
-    let content_list_text = read_zip_entry_by_candidates(bytes, &["content_list.json"])?;
-    let middle_text = read_zip_entry_by_candidates(bytes, MIDDLE_CANDIDATES)?;
-    let content_list: Value = serde_json::from_str(&content_list_text)
-        .map_err(|e| AppError::message(format!("MinerU result parse failed: content_list: {e}")))?;
-    let middle: Value = serde_json::from_str(&middle_text)
-        .map_err(|e| AppError::message(format!("MinerU result parse failed: middle: {e}")))?;
-    let page_sizes = parse_middle_page_sizes(&middle)?;
-    let mut pages = build_pages(&content_list, &page_sizes)?;
-    append_middle_captions(&mut pages, &middle);
+    let content_list = read_zip_entry_by_candidates(bytes, &["content_list.json"])?;
+    let middle = read_zip_entry_by_candidates(bytes, MIDDLE_CANDIDATES)?;
+    parse_cloud_layout(
+        &parse_layout_json(&content_list, "content_list")?,
+        &parse_layout_json(&middle, "middle")?,
+    )
+}
+
+fn parse_layout_json(text: &str, name: &str) -> Result<Value, AppError> {
+    serde_json::from_str(text)
+        .map_err(|e| AppError::message(format!("MinerU result parse failed: {name}: {e}")))
+}
+
+fn parse_cloud_layout(
+    content_list: &Value,
+    middle: &Value,
+) -> Result<LayoutRemoteAnalyzePdfResult, AppError> {
+    let page_sizes = parse_middle_page_sizes(middle)?;
+    let mut pages = build_pages(content_list, &page_sizes)?;
+    append_middle_captions(&mut pages, middle);
     let rendered_pages = page_sizes
         .iter()
         .map(|&(w, h)| (w.round() as u32, h.round() as u32))
@@ -907,14 +919,18 @@ async fn request_upload_url(
     file_name: &str,
     language: &str,
     is_ocr: bool,
+    page_ranges: Option<&str>,
 ) -> Result<(String, String), AppError> {
-    let body = json!({
+    let mut body = json!({
         "files": [{ "name": file_name, "is_ocr": is_ocr }],
         "language": language,
         "model_version": "vlm",
         "enable_formula": true,
         "enable_table": true,
     });
+    if let Some(page_ranges) = page_ranges {
+        body["files"][0]["page_ranges"] = json!(page_ranges);
+    }
     let response = client
         .post(format!("{base}/api/v4/file-urls/batch"))
         .header("Authorization", auth)
@@ -957,6 +973,7 @@ async fn analyze_pdf(ctx: LayoutAnalyzeContext) -> Result<LayoutRemoteAnalyzePdf
         app,
         credentials,
         args,
+        is_cancelled,
     } = ctx;
     let (pdf_bytes, file_name) =
         super::prepare_pdf_upload(&args.pdf_base64, args.file_name.as_deref())?;
@@ -966,14 +983,39 @@ async fn analyze_pdf(ctx: LayoutAnalyzeContext) -> Result<LayoutRemoteAnalyzePdf
         emit_cloud_progress(&app, phase, extracted, total, request_id.clone());
     };
 
-    let zip_bytes =
-        run_mineru_extract_unshared(&credentials, pdf_bytes, &file_name, &emit_progress, &|| {
-            false
-        })
-        .await?;
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    let (local_page_count, pdf_bytes) = if credentials.self_hosted {
+        (None, pdf_bytes)
+    } else {
+        tokio::task::spawn_blocking(move || (chunked::pdf_page_count(&pdf_bytes), pdf_bytes))
+            .await
+            .map_err(|e| AppError::message(format!("MinerU PDF page count failed: {e}")))?
+    };
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    let local_page_count: Option<u32> = None;
 
-    // Extract content_list.json + middle.json and map to page boxes.
-    let result = parse_result_zip(&zip_bytes)?;
+    let page_count = local_page_count.or(args.page_count).unwrap_or(0) as usize;
+    let result = if !credentials.self_hosted && page_count > chunked::PAGES_PER_SEGMENT {
+        chunked::analyze(
+            &credentials,
+            pdf_bytes.into(),
+            &file_name,
+            page_count,
+            &emit_progress,
+            &*is_cancelled,
+        )
+        .await?
+    } else {
+        let zip_bytes = run_mineru_extract_unshared(
+            &credentials,
+            pdf_bytes,
+            &file_name,
+            &emit_progress,
+            &|| false,
+        )
+        .await?;
+        parse_result_zip(&zip_bytes)?
+    };
     log::info!(
         target: "agentero::layout::hosted",
         "mineru result: pages={} boxes={}",
@@ -1016,8 +1058,9 @@ async fn run_mineru_extract_unshared(
             &client,
             &base,
             &auth,
-            pdf_bytes,
+            pdf_bytes.into(),
             file_name,
+            None,
             credentials,
             progress,
             cancel,
@@ -1123,8 +1166,9 @@ async fn run_cloud_extract(
     client: &reqwest::Client,
     base: &str,
     auth: &str,
-    pdf_bytes: Vec<u8>,
+    pdf_bytes: bytes::Bytes,
     file_name: &str,
+    page_ranges: Option<&str>,
     credentials: &HostedProviderCredentials,
     progress: super::ProgressFn<'_>,
     cancel: super::CancelFn<'_>,
@@ -1138,8 +1182,22 @@ async fn run_cloud_extract(
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .unwrap_or(MINERU_DEFAULT_LANGUAGE);
-    let (batch_id, upload_url) =
-        request_upload_url(client, base, auth, file_name, language, credentials.is_ocr).await?;
+    if page_ranges.is_some() && cancel() {
+        return Err(AppError::message(CANCELLED_MESSAGE));
+    }
+    let (batch_id, upload_url) = request_upload_url(
+        client,
+        base,
+        auth,
+        file_name,
+        language,
+        credentials.is_ocr,
+        page_ranges,
+    )
+    .await?;
+    if page_ranges.is_some() && cancel() {
+        return Err(AppError::message(CANCELLED_MESSAGE));
+    }
     let upload = client
         .put(&upload_url)
         .body(pdf_bytes)

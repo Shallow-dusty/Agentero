@@ -41,6 +41,8 @@ pub struct LayoutAnalyzeContext {
     pub app: AppHandle,
     pub credentials: HostedProviderCredentials,
     pub args: LayoutRemoteAnalyzePdfArgs,
+    /// Check before starting another provider job; the Host also drops in-flight HTTP work on cancel.
+    pub is_cancelled: Box<dyn Fn() -> bool + Send + Sync>,
 }
 
 #[async_trait]
