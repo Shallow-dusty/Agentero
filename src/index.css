@@ -1582,6 +1582,7 @@ body.agentero-dockview-dragging * {
 }
 
 .agentero-dockview .dv-tab {
+	/* Cap overflow menu rows; let tab contents shrink for title ellipsis. */
 	max-width: 12rem;
 	min-width: 0;
 	overflow: hidden;
@@ -1613,9 +1614,17 @@ body.agentero-dockview-dragging * {
 	width: var(--agentero-dock-tab-width, 10rem);
 }
 
-/* Leave room for two tabs and the new-tab button in the narrow right rail. */
 .agentero-dockview[data-right-sidebar] {
+	container: agentero-right-rail / inline-size;
 	--agentero-dock-tab-width: 7rem;
+}
+
+/* At the 260px rail minimum, fit two slots alongside the overflow and
+ * new-tab buttons so closing the active tab doesn't scroll the strip. */
+@container agentero-right-rail (width < 18.5rem) {
+	.agentero-dockview[data-right-sidebar] .dv-tabs-container {
+		--agentero-dock-tab-width: 5.875rem;
+	}
 }
 
 /* Keep the close affordance quiet at rest and give it a real hit target. */
