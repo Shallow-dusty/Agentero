@@ -82,6 +82,8 @@ export type UsePdfLayoutRunOptions = {
 	 */
 	isActive: boolean;
 	totalPages: number;
+	/** Original bytes of the current viewer document, when buffer-backed. */
+	pdfBytes?: ArrayBuffer | null;
 	/** The value gates the auto-run effect; the ref must never become a dep. */
 	layoutCap: LayoutCapability;
 	layoutCapRef: RefObject<LayoutCapability>;
@@ -116,6 +118,7 @@ export function usePdfLayoutRun({
 	paperRelPath,
 	isActive,
 	totalPages,
+	pdfBytes,
 	layoutCap,
 	layoutCapRef,
 	docCap,
@@ -171,7 +174,10 @@ export function usePdfLayoutRun({
 				type: "no-document",
 				message: "superseded",
 			});
-			const pages = totalPagesRef.current;
+			const pageCount = docs.getDocument(docId)?.pageCount;
+			const pages = pageCount ?? totalPagesRef.current;
+			const pdfInput =
+				pdfBytes && pageCount ? { bytes: pdfBytes, pageCount } : undefined;
 			const paperLabel =
 				paperRelPath || paperAbsPath?.split(/[/\\]/).pop() || docId;
 
@@ -208,6 +214,7 @@ export function usePdfLayoutRun({
 					void runDocumentLayoutAnalysis(la, docId, {
 						paperAbsPath,
 						totalPages: pages > 0 ? pages : null,
+						pdfInput,
 						force: opts?.force === true,
 						pageSizeAt,
 						isDocumentOpen: () =>
@@ -318,6 +325,7 @@ export function usePdfLayoutRun({
 			docId,
 			paperAbsPath,
 			paperRelPath,
+			pdfBytes,
 			t,
 			notifyLayoutFailure,
 			layoutCapRef,

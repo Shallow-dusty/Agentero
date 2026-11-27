@@ -66,6 +66,8 @@ export type RunLayoutAnalysisOptions = {
 	paperAbsPath?: string | null;
 	/** PDF page count for progress bar before the first page-complete event. */
 	totalPages?: number | null;
+	/** Original bytes and page count of the same opened document. */
+	pdfInput?: { bytes: ArrayBuffer; pageCount: number };
 	/** Label shown in progress UI instead of the generic "Analyzing layout…". */
 	paperLabel?: string;
 	/** Optional live document guard for viewer-bound analysis. */
@@ -967,7 +969,11 @@ function startRemoteLayoutAnalysis(
 			assertDocumentOpen(options.isDocumentOpen);
 			const pdfPath = await findCanonicalPaperPdfPath(paperAbsPath);
 			if (!pdfPath) throw new Error("No local PDF for layout analysis");
-			const buffer = await localFileToArrayBuffer(pdfPath);
+			// Only trust a count paired with the uploaded bytes. The on-disk PDF
+			// could have changed since the viewer opened its document.
+			const input = provider.id === "mineru" ? options.pdfInput : undefined;
+			const snapshot = input?.bytes.byteLength ? input : undefined;
+			const buffer = snapshot?.bytes ?? (await localFileToArrayBuffer(pdfPath));
 			if (!buffer) throw new Error("Failed to read paper PDF");
 			assertDocumentOpen(options.isDocumentOpen);
 
@@ -1015,12 +1021,13 @@ function startRemoteLayoutAnalysis(
 				paperAbsPath,
 			);
 			if (task.isAborted) return;
+			assertDocumentOpen(options.isDocumentOpen);
 			const res = await invokeLayoutRemoteAnalyzePdf({
 				provider: provider.id,
 				pdfBase64: arrayBufferToBase64(buffer),
 				fileName: pdfPath.split(/[/\\]/).pop() || "paper.pdf",
 				requestId,
-				pageCount: provider.id === "mineru" ? totalPages : undefined,
+				pageCount: snapshot?.pageCount,
 			});
 			unlisten?.();
 			unlisten = null;

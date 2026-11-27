@@ -87,7 +87,7 @@ pub struct LayoutRemoteAnalyzePdfArgs {
     /// Remote provider id (defaults to `paddle`).
     #[serde(default)]
     pub provider: Option<String>,
-    /// Viewer page count for platforms without local PDFium.
+    /// Page count for the exact PDF in `pdf_base64`, when already known.
     #[serde(default)]
     #[specta(optional)]
     pub page_count: Option<u32>,

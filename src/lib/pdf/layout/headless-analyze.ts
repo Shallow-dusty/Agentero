@@ -227,6 +227,7 @@ export async function analyzePaperLayoutHeadless(opts: {
 				paperAbsPath,
 				paperLabel: opts.paperLabel,
 				totalPages: pageCount > 0 ? pageCount : null,
+				pdfInput: { bytes: buffer, pageCount },
 				force: forceAnalysis,
 				pageSizeAt: (pageIndex) => {
 					const size = doc.pages[pageIndex]?.size;

@@ -7,11 +7,13 @@ use super::{
 };
 use crate::http;
 use bytes::Bytes;
+use serde_json::Value;
 use std::ops::Range;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub(super) const PAGES_PER_SEGMENT: usize = 200;
-const MAX_PAGES: usize = 10_000;
+// Each job uploads the whole PDF again; cap analysis at ten segments.
+const MAX_PAGES: usize = 2_000;
 // Cumulative decompressed layout JSON, in addition to the existing per-file/ZIP caps.
 const MAX_MERGED_JSON_BYTES: usize = 256 * 1024 * 1024;
 const CANCELLED: &str = "layout analysis cancelled";
@@ -33,7 +35,7 @@ pub(super) async fn analyze(
 ) -> Result<LayoutRemoteAnalyzePdfResult, AppError> {
     if page_count > MAX_PAGES {
         return Err(AppError::message(format!(
-            "MinerU layout supports up to {MAX_PAGES} pages; PDF has {page_count}"
+            "MinerU cloud layout in Agentero supports up to {MAX_PAGES} pages; PDF has {page_count}"
         )));
     }
     let (base, auth) = resolve_target(credentials)?;
@@ -53,8 +55,12 @@ pub(super) async fn analyze(
         let page_ranges = format!("{}-{end}", start + 1);
         let segment_pages = (end - start) as u64;
         let extracted_pages = AtomicU64::new(0);
-        let report = |_: &str, extracted: Option<u64>, segment_total: Option<u64>| {
-            if let Some(n) = extracted.filter(|_| segment_total == Some(segment_pages)) {
+        let report = |_: &str, extracted: Option<u64>, reported_total: Option<u64>| {
+            // A job may report the original document total even though it
+            // processes only this range. Cap its contribution at this segment.
+            if let Some(n) = extracted
+                .filter(|_| reported_total == Some(segment_pages) || reported_total == total)
+            {
                 extracted_pages.fetch_max(n.min(segment_pages), Ordering::Relaxed);
             }
             // Per-job uploading/downloading presets in the viewer would reset
@@ -112,7 +118,7 @@ fn parse_segment(
     let middle = parse_layout_json(&middle, "middle")?;
     let pages = middle
         .get("pdf_info")
-        .and_then(serde_json::Value::as_array)
+        .and_then(Value::as_array)
         .ok_or_else(|| AppError::message("MinerU result is missing pdf_info"))?;
     if pages.len() != range.len() {
         return Err(AppError::message(format!(
@@ -121,40 +127,52 @@ fn parse_segment(
             range.len()
         )));
     }
-    if pages.iter().any(|page| {
-        !page["page_size"].as_array().is_some_and(|size| {
-            size.len() == 2
-                && size.iter().all(|n| {
-                    n.as_f64()
-                        .is_some_and(|n| n > 0.0 && n <= f64::from(u32::MAX))
-                })
-        })
-    }) {
-        return Err(AppError::message("MinerU result has an invalid page size"));
-    }
-    // Use a complete per-page array (including blank pages) to establish the
-    // index base. The sparse Content List cannot establish that on its own.
-    let index_base = [0, range.start]
+    // Missing indices keep their array position, as in the whole-document
+    // parser. Every explicit index must agree with that position and one base.
+    let mut bases = [0, range.start]
         .into_iter()
-        .find(|&base| {
+        .filter(|&base| {
             pages.iter().enumerate().all(|(i, page)| {
-                page.get("page_idx").and_then(serde_json::Value::as_u64) == Some((base + i) as u64)
+                page.is_object()
+                    && match page.get("page_idx") {
+                        None | Some(Value::Null) => true,
+                        Some(index) => index.as_u64() == Some((base + i) as u64),
+                    }
             })
         })
-        .ok_or_else(|| AppError::message("MinerU result has unexpected pdf_info page indices"))?;
+        .peekable();
+    if bases.peek().is_none() {
+        return Err(AppError::message(
+            "MinerU result has unexpected pdf_info page indices",
+        ));
+    }
     let blocks = content
         .as_array_mut()
         .ok_or_else(|| AppError::message("MinerU content_list is not an array"))?;
-    for block in blocks {
-        let local_index = block
+    let local_index = |block: &Value, base: usize| {
+        block
             .get("page_idx")
-            .and_then(serde_json::Value::as_u64)
-            .and_then(|index| index.checked_sub(index_base as u64))
+            .and_then(Value::as_u64)
+            .and_then(|index| index.checked_sub(base as u64))
             .filter(|&index| index < range.len() as u64)
-            .ok_or_else(|| {
-                AppError::message("MinerU content_list page index does not match pdf_info")
-            })?;
-        block["page_idx"] = local_index.into();
+    };
+    // After the first segment the relative and absolute ranges are disjoint.
+    // Content List can resolve the base when pdf_info has no explicit indices.
+    let index_base = bases
+        .find(|&base| {
+            blocks
+                .iter()
+                .all(|block| local_index(block, base).is_some())
+        })
+        .ok_or_else(|| {
+            AppError::message("MinerU content_list page index does not match pdf_info")
+        })?;
+    if index_base != 0 {
+        for block in blocks {
+            block["page_idx"] = local_index(block, index_base)
+                .expect("page index was validated")
+                .into();
+        }
     }
     // Both output arrays are dense and in range order. Appending once applies
     // the document offset to boxes, captions, blank pages and sizes together.

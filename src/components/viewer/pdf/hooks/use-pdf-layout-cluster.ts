@@ -114,6 +114,7 @@ export function usePdfLayoutCluster({
 		paperRelPath,
 		isActive,
 		totalPages,
+		pdfBytes,
 		layoutCap,
 		layoutCapRef,
 		docCap,

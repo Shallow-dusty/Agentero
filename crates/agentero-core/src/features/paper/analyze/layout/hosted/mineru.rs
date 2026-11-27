@@ -983,18 +983,17 @@ async fn analyze_pdf(ctx: LayoutAnalyzeContext) -> Result<LayoutRemoteAnalyzePdf
         emit_cloud_progress(&app, phase, extracted, total, request_id.clone());
     };
 
+    let page_count = args.page_count.filter(|&n| n > 0);
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    let (local_page_count, pdf_bytes) = if credentials.self_hosted {
-        (None, pdf_bytes)
-    } else {
+    let (page_count, pdf_bytes) = if !credentials.self_hosted && page_count.is_none() {
         tokio::task::spawn_blocking(move || (chunked::pdf_page_count(&pdf_bytes), pdf_bytes))
             .await
             .map_err(|e| AppError::message(format!("MinerU PDF page count failed: {e}")))?
+    } else {
+        (page_count, pdf_bytes)
     };
-    #[cfg(any(target_os = "ios", target_os = "android"))]
-    let local_page_count: Option<u32> = None;
 
-    let page_count = local_page_count.or(args.page_count).unwrap_or(0) as usize;
+    let page_count = page_count.unwrap_or_default() as usize;
     let result = if !credentials.self_hosted && page_count > chunked::PAGES_PER_SEGMENT {
         chunked::analyze(
             &credentials,

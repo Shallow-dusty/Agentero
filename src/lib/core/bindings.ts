@@ -4240,7 +4240,7 @@ export type LayoutRemoteAnalyzePdfArgs = {
 	requestId?: string | null,
 	/**  Remote provider id (defaults to `paddle`). */
 	provider?: string | null,
-	/**  Viewer page count for platforms without local PDFium. */
+	/**  Page count for the exact PDF in `pdf_base64`, when already known. */
 	pageCount?: number | null,
 };
 
