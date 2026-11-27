@@ -1581,10 +1581,6 @@ body.agentero-dockview-dragging * {
 	user-select: none;
 }
 
-/*
- * Cap each document tab so long paper titles do not dominate the tab strip.
- * Ellipsis needs min-width:0 on the flex chain + overflow on the title span.
- */
 .agentero-dockview .dv-tab {
 	max-width: 12rem;
 	min-width: 0;
@@ -1610,8 +1606,21 @@ body.agentero-dockview-dragging * {
 		color-mix(in oklab, var(--foreground) 7%, transparent);
 }
 
+/* Keep the next close button in the same slot when a tab closes.
+ * Size only the horizontal strip, not Dockview's overflow menu rows. */
+.agentero-dockview .dv-tabs-container:not(.dv-tabs-container-vertical)
+	> .dv-tab {
+	width: var(--agentero-dock-tab-width, 10rem);
+}
+
+/* Leave room for two tabs and the new-tab button in the narrow right rail. */
+.agentero-dockview[data-right-sidebar] {
+	--agentero-dock-tab-width: 7rem;
+}
+
 /* Keep the close affordance quiet at rest and give it a real hit target. */
 .agentero-dockview .dv-tab .dv-default-tab .dv-default-tab-action {
+	flex-shrink: 0;
 	border-radius: 0.25rem;
 	padding: 3px;
 	opacity: 0.55;
